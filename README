@@ -135,7 +135,7 @@ XC.functional   GGA
 XC.authors      NNGGA
 
 This expects to find inside the running directory the nn_params/ directory
-generated in the previous step. Unfortunatelly the name of the directory
+generated in the previous step. Unfortunately the name of the directory
 is rigid so care must be taken not to use the wrong NN parameters.
 
 6. Notes and common pitfalls
