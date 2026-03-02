@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
-Export Equinox MLP weights for GGA_Fx_G_transf_lin and GGA_Fc_G_transf_lin
-to plain-text .dat files for use in Fortran.
+Export Equinox MLP weights (any input size) to plain-text .dat files for use in Fortran.
 
 Usage example:
 
@@ -10,14 +9,16 @@ Usage example:
         --fc-model pretrained_models/GGA_Fc_G_transf_lin_d3_n16_s42_v_20000 \
         --out-prefix xc_nn
 
-This will create files like:
-  xc_nn_fx_W1.dat, xc_nn_fx_b1.dat, ..., xc_nn_fc_W4.dat, xc_nn_fc_b4.dat
+This exporter is input-dimension agnostic (e.g. supports 1-, 2-, or 3-input models for unpolarized or spin-aware variants).
+The Fortran side must be consistent with the exported W1 shapes.
+
 """
 
 import argparse
 import numpy as np
 import jax
 import equinox as eqx
+import os
 
 from nnxc_tools.models import load_eqx_model
 
@@ -37,15 +38,15 @@ def extract_mlp_params(mlp):
     return weights, biases
 
 
-def save_layer(prefix, idx, W, b):
+def save_layer(out_dir, prefix, idx, W, b):
     """Save a single layer's weights and biases to text files.
 
     Files:
       {prefix}_W{idx}.dat
       {prefix}_b{idx}.dat
     """
-    w_file = f"{prefix}_W{idx}.dat"
-    b_file = f"{prefix}_b{idx}.dat"
+    w_file = os.path.join(out_dir, f"{prefix}_W{idx}.dat")
+    b_file = os.path.join(out_dir, f"{prefix}_b{idx}.dat")
     np.savetxt(w_file, W)
     np.savetxt(b_file, b)
     print(f"  saved {w_file} (shape {W.shape}), {b_file} (shape {b.shape})")
@@ -61,7 +62,13 @@ def main():
                              "(e.g. pretrained_models/GGA_Fc_G_transf_lin_d3_n16_s42_v_20000)")
     parser.add_argument("--out-prefix", default="xc_nn",
                         help="Prefix for output files (default: xc_nn)")
+    parser.add_argument("--expect-layers", type=int, default=4,
+                        help="Expected number of Linear layers in each MLP (default: 4). Used for a sanity warning only.")
+    parser.add_argument("--out-dir", default=".",
+                        help="Directory where exported .dat files will be written (default: current directory)")
     args = parser.parse_args()
+
+    os.makedirs(args.out_dir, exist_ok=True)
 
     jax.config.update("jax_enable_x64", True)
 
@@ -81,23 +88,23 @@ def main():
     fc_weights, fc_biases = extract_mlp_params(fc_mlp)
     print(f"  Fc MLP: {len(fc_weights)} layers")
 
-    # Sanity: For your current architecture, we expect 4 Linear layers for each model
-    if len(fx_weights) != 4 or len(fc_weights) != 4:
-        raise RuntimeError(
-            f"Expected 4 layers for each MLP (depth=3), "
-            f"got Fx={len(fx_weights)}, Fc={len(fc_weights)}. "
-            "Update Fortran shapes or check the model definitions."
-        )
+    if len(fx_weights) != args.expect_layers or len(fc_weights) != args.expect_layers:
+        print("\nWARNING: Unexpected layer count detected.")
+        print(f"  Expected {args.expect_layers} layers; got Fx={len(fx_weights)}, Fc={len(fc_weights)}")
+        print("  Export will proceed, but ensure the Fortran code expects the same architecture.")
+
+    print(f"  Fx W1 shape = {fx_weights[0].shape} (out,in); Fc W1 shape = {fc_weights[0].shape} (out,in)")
+    print(f"  Fx W_last shape = {fx_weights[-1].shape}; Fc W_last shape = {fc_weights[-1].shape}")
 
     # Save Fx layers
     print("\nSaving Fx layers...")
     for i, (W, b) in enumerate(zip(fx_weights, fx_biases), start=1):
-        save_layer(f"{args.out_prefix}_fx", i, W, b)
+        save_layer(args.out_dir, f"{args.out_prefix}_fx", i, W, b)
 
     # Save Fc layers
     print("\nSaving Fc layers...")
     for i, (W, b) in enumerate(zip(fc_weights, fc_biases), start=1):
-        save_layer(f"{args.out_prefix}_fc", i, W, b)
+        save_layer(args.out_dir, f"{args.out_prefix}_fc", i, W, b)
 
     print("\nDone. You can now point the Fortran loader at prefix =", args.out_prefix)
 

@@ -1,0 +1,155 @@
+
+
+NXC: Neural-network XC utilities for SIESTA (NN-GGA, non spin-polarized)
+======================================================================
+
+This directory contains helper scripts to export trained JAX/Equinox neural-network
+GGA XC models (Fx and Fc) into ASCII parameter files that are read by the NN-enabled
+SIESTA build.
+
+The current NNXC implementation is:
+  - GGA only (depends on rho and |grad rho|)
+  - non spin-polarized (SpinPolarized = false)
+
+The NN provides enhancement factors Fx(rho,|∇rho|) and Fc(rho,|∇rho|) which are
+combined inside SIESTA with SIESTA’s own LDA references:
+  - exchange: EXCHNG (LDA-x)
+  - correlation: PW92C (PW92 LDA-c)
+
+NNXC utilities for SIESTA
+========================
+
+This directory contains utilities to export trained JAX/Equinox NNXC models
+into ASCII files readable by the NNXC-enabled SIESTA code.
+
+The intended workflow is:
+  1. Train NNXC models in JAX/Equinox.
+  2. Export the trained models to per-layer ASCII files.
+  3. Point SIESTA to the exported parameter prefix.
+
+
+1. Directory contents
+---------------------
+
+Typical files and directories:
+
+  export_eqx_to_fortran.py
+    Python script that loads Equinox models and writes per-layer ASCII files
+    (weights and biases).
+
+  export_nnxc.sh
+    Wrapper script (recommended entry point) that:
+      - validates inputs
+      - calls the Python exporter
+      - stages output files into nn_params/
+
+  nnxc_tools_pkg/
+    Python package providing shared NNXC utilities (model loading, parameter
+    extraction). This package must be installed once in your Python environment.
+
+  nn_params/
+    Destination directory containing exported ASCII NNXC parameters for SIESTA.
+
+  Sample-Models/
+    Example trained NNXC models (.eqx + .json).
+
+  Sample_SiestaRuns/
+    Example SIESTA input files using NNXC.
+
+
+2. Prerequisites
+----------------
+
+Python environment:
+  - Python 3.10+ (tested with 3.10–3.13)
+  - numpy
+  - jax, jaxlib
+  - equinox
+
+Install the shared NNXC utilities once:
+
+  cd Util/NXC/nnxc_tools_pkg
+  python -m pip install -e .
+
+Verify installation:
+
+  python -c "import nnxc_tools; print(nnxc_tools.__file__)"
+
+This should print a path inside nnxc_tools_pkg/nnxc_tools/.
+
+SIESTA build:
+  - Use the NNXC-enabled SIESTA build in this repository.
+  - The build must include the NNXC modules in SiestaXC.
+
+
+3. Model file format
+--------------------
+
+Each trained model is expected to exist as two files sharing a prefix:
+
+  <MODEL_PREFIX>.eqx    (Equinox serialized parameters)
+  <MODEL_PREFIX>.json   (Model metadata / architecture)
+
+Example:
+
+  Sample-Models/pretrainedinSiesta/
+    GGA_Fx_G_transf_lin_d3_n16_s42_v_20000.eqx
+    GGA_Fx_G_transf_lin_d3_n16_s42_v_20000.json
+
+IMPORTANT:
+  When exporting, always pass the prefix only.
+  Do NOT include .eqx or .json in the command-line arguments.
+
+
+4. Exporting NNXC models (recommended)
+--------------------------------------
+
+Run the exporter from this directory:
+
+  ./export_nnxc.sh \
+    --fx-model Sample-Models/pretrainedinSiesta/GGA_Fx_G_transf_lin_d3_n16_s42_v_20000 \
+    --fc-model Sample-Models/pretrainedinSiesta/GGA_Fc_G_transf_lin_d3_n16_s42_v_20000 \
+    --out-prefix xc_nn
+
+This will:
+  1. Load the Fx and Fc Equinox models
+  2. Extract MLP weights and biases
+  3. Write ASCII files
+  4. Stage them into:
+
+    ./nn_params/
+
+Resulting files:
+
+  nn_params/
+    xc_nn_fx_W1.dat  xc_nn_fx_b1.dat
+    ...
+    xc_nn_fc_W4.dat  xc_nn_fc_b4.dat
+
+
+5. Use in siesta
+---------------------------
+
+currently, to use the NN xc in siesta only works with these labels:
+XC.functional   GGA
+XC.authors      NNGGA
+
+This expects to find inside the running directory the nn_params/ directory
+generated in the previous step. Unfortunately the name of the directory
+is rigid so care must be taken not to use the wrong NN parameters.
+
+6. Notes and common pitfalls
+----------------------------
+
+- Always use the same Python interpreter for:
+    - installing nnxc_tools
+    - running export_nnxc.sh
+
+  Check with:
+    which python
+
+- Passing .eqx or .json to --fx-model / --fc-model will fail.
+  Always pass the prefix only.
+
+- export_nnxc.sh is the recommended interface; calling
+  export_eqx_to_fortran.py directly is discouraged for normal use.
