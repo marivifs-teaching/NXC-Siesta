@@ -6,7 +6,6 @@ This directory contains the neural-network GGA exchange–correlation (NNXC) fun
 - `weights/` – Exported ASCII parameters used by SIESTA.
 - `validation/` – Fortran and Python tests for energies and first derivatives.
 - `grids/` – Reference density/gradient grids used in validation.
-- `runs/` – Generated test outputs (ignored in git).
 - `legacy/` – Archived unpolarized tools and earlier versions.
 
 The functional is validated to machine precision for NN outputs and ~1e-8 for first analytic derivatives.
